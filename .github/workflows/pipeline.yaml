@@ -1,0 +1,56 @@
+name: DevOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-cd-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+    # Stage 1 & 2: Source Code & Version Control
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # Stage 3: Continuous Integration (Install & Test)
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Automated Tests
+      run: |
+        pytest test_app.py
+
+    # Stage 4: Build & Push Docker Image
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_TAG=${{ github.sha }}
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/student-calculator:$IMAGE_TAG .
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/student-calculator:$IMAGE_TAG
+
+    # Stage 5: Deployment to Kubernetes
+    - name: Set up Kubeconfig
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_DATA }}" | base64 --decode > ~/.kube/config
+
+    - name: Deploy to Kubernetes
+      run: |
+        IMAGE_TAG=${{ github.sha }}
+        # Replace the placeholder tag dynamically with the Git SHA tag
+        sed -i "s|TAG_PLACEHOLDER|$IMAGE_TAG|g" k8s/deployment.yaml
+        
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
